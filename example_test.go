@@ -1,6 +1,8 @@
 package retry_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -81,4 +83,139 @@ func ExampleExpDelayer_Rand() {
 	// [10s 30s]
 	// [10s 30s]
 	// [10s 30s]
+}
+
+func ExampleRetryer_MaxAttempts() {
+	retryer := retry.Retryer{
+		Delayer:     retry.NopDelayer{},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		context.Background(),
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			return errors.New("err")
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// 2
+	// 3
+	// err
+}
+
+func ExampleRetryer_Retry_success() {
+	retryer := retry.Retryer{
+		Delayer:     retry.NopDelayer{},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		context.Background(),
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			if attempt > 1 {
+				return nil
+			}
+			return errors.New("err")
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// 2
+	// <nil>
+}
+
+func ExampleRetryer_Retry_break() {
+	retryer := retry.Retryer{
+		Delayer:     retry.NopDelayer{},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		context.Background(),
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			return retry.Break(errors.New("err"))
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// err
+}
+
+func ExampleRetryer_Retry_ctxCanceled() {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	retryer := retry.Retryer{
+		Delayer:     retry.NopDelayer{},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		ctx,
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			return errors.New("err")
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// err
+}
+
+func ExampleRetryer_Retry_ctxCanceled2() {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(time.Millisecond)
+		cancel()
+	}()
+	retryer := retry.Retryer{
+		Delayer:     retry.ConstantDelayer{Duration: 2 * time.Millisecond},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		ctx,
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			return errors.New("err")
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// err
+}
+
+func ExampleRetryer_Retry_ctxTimeout() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	retryer := retry.Retryer{
+		Delayer:     retry.ConstantDelayer{Duration: 2 * time.Millisecond},
+		MaxAttempts: 3,
+	}
+	attempt := 0
+	err := retryer.Retry(
+		ctx,
+		func(context.Context) error {
+			attempt++
+			fmt.Println(attempt)
+			return errors.New("err")
+		},
+	)
+	fmt.Println(err)
+	// Output:
+	// 1
+	// err
 }
