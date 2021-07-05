@@ -44,7 +44,7 @@ func ExampleExpDelayer() {
 	// 20s
 }
 
-func ExampleExpDelayer_Rand() {
+func ExampleExpDelayer_rand() {
 	delayer := retry.ExpDelayer{
 		Initial:    time.Second,
 		Multiplier: 2,
@@ -85,7 +85,7 @@ func ExampleExpDelayer_Rand() {
 	// [10s 30s]
 }
 
-func ExampleRetryer_MaxAttempts() {
+func ExampleRetryer_maxAttempts() {
 	retryer := retry.Retryer{
 		Delayer:     retry.NopDelayer{},
 		MaxAttempts: 3,
