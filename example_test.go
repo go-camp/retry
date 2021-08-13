@@ -2,7 +2,6 @@ package retry_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -85,26 +84,30 @@ func ExampleExpDelayer_rand() {
 	// [10s 30s]
 }
 
+func printRetryResult(result retry.RetryResult) {
+	fmt.Printf("%+v\n", result)
+	fmt.Println("result.FinalOperationError:", result.FinalOperationError())
+	fmt.Println("result.FinalAttemptError:", result.FinalAttemptError())
+}
+
 func ExampleRetryer_maxAttempts() {
 	retryer := retry.Retryer{
 		Delayer:     retry.NopDelayer{},
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		context.Background(),
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
-			return errors.New("err")
+			return fmt.Errorf("err%d", attempt)
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// 2
-	// 3
-	// err
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1} {Delay:0s ContextError:<nil> OperationError:err2} {Delay:0s ContextError:<nil> OperationError:err3}]}
+	// result.FinalOperationError: err3
+	// result.FinalAttemptError: err3
 }
 
 func ExampleRetryer_Retry_success() {
@@ -113,22 +116,21 @@ func ExampleRetryer_Retry_success() {
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		context.Background(),
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
 			if attempt > 1 {
 				return nil
 			}
-			return errors.New("err")
+			return fmt.Errorf("err%d", attempt)
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// 2
-	// <nil>
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1} {Delay:0s ContextError:<nil> OperationError:<nil>}]}
+	// result.FinalOperationError: <nil>
+	// result.FinalAttemptError: <nil>
 }
 
 func ExampleRetryer_Retry_break() {
@@ -137,18 +139,18 @@ func ExampleRetryer_Retry_break() {
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		context.Background(),
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
-			return retry.Break(errors.New("err"))
+			return retry.Break(fmt.Errorf("err%d", attempt))
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// err
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1}]}
+	// result.FinalOperationError: err1
+	// result.FinalAttemptError: err1
 }
 
 func ExampleRetryer_Retry_ctxCanceled() {
@@ -159,18 +161,18 @@ func ExampleRetryer_Retry_ctxCanceled() {
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		ctx,
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
-			return errors.New("err")
+			return fmt.Errorf("err%d", attempt)
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// err
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1} {Delay:0s ContextError:context canceled OperationError:<nil>}]}
+	// result.FinalOperationError: err1
+	// result.FinalAttemptError: context canceled
 }
 
 func ExampleRetryer_Retry_ctxCanceled2() {
@@ -184,18 +186,18 @@ func ExampleRetryer_Retry_ctxCanceled2() {
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		ctx,
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
-			return errors.New("err")
+			return fmt.Errorf("err%d", attempt)
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// err
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1} {Delay:2ms ContextError:context canceled OperationError:<nil>}]}
+	// result.FinalOperationError: err1
+	// result.FinalAttemptError: context canceled
 }
 
 func ExampleRetryer_Retry_ctxTimeout() {
@@ -206,16 +208,16 @@ func ExampleRetryer_Retry_ctxTimeout() {
 		MaxAttempts: 3,
 	}
 	attempt := 0
-	err := retryer.Retry(
+	result := retryer.Retry(
 		ctx,
 		func(context.Context) error {
 			attempt++
-			fmt.Println(attempt)
-			return errors.New("err")
+			return fmt.Errorf("err%d", attempt)
 		},
 	)
-	fmt.Println(err)
+	printRetryResult(result)
 	// Output:
-	// 1
-	// err
+	// {MaxAttempts:3 Attempts:[{Delay:0s ContextError:<nil> OperationError:err1} {Delay:2ms ContextError:context deadline exceeded OperationError:<nil>}]}
+	// result.FinalOperationError: err1
+	// result.FinalAttemptError: context deadline exceeded
 }

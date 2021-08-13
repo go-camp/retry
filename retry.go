@@ -48,57 +48,94 @@ func (r Retryer) delayer() Delayer {
 	return r.Delayer
 }
 
-// Retry retries to call function op at least once.
-//
-// If the op function returns nil, the retry will be terminated,
-// and the Retry function returns nil.
-//
-// If the op function returns BreakError, the retry will be terminated,
-// and the Retry function returns an error unwrap from BreakError.
-//
-// If the calls of op function exceed maximum, the retry will be terminated,
-// and the Retry function returns the error returned from the op function.
-//
-// If the context is canceled, the retry will be terminated,
-// and the Retry function returns the error returned from the op function.
-func (r Retryer) Retry(ctx context.Context, op func(context.Context) error) error {
+type RetryResult struct {
+	MaxAttempts int
+	Attempts    []Attempt
+}
+
+type Attempt struct {
+	Delay          time.Duration
+	ContextError   error
+	OperationError error
+}
+
+func (a Attempt) Err() error {
+	if a.ContextError != nil {
+		return a.ContextError
+	}
+	return a.OperationError
+}
+
+func (rr RetryResult) FinalOperationError() error {
+	if len(rr.Attempts) == 0 {
+		return nil
+	}
+	i := len(rr.Attempts) - 1
+	attempt := rr.Attempts[i]
+	if attempt.ContextError == nil && attempt.OperationError == nil {
+		return nil
+	}
+	for {
+		if attempt.OperationError != nil {
+			return attempt.OperationError
+		}
+		if i--; i < 0 {
+			break
+		}
+		attempt = rr.Attempts[i]
+	}
+	return nil
+}
+
+func (rr RetryResult) FinalAttemptError() error {
+	if len(rr.Attempts) == 0 {
+		return nil
+	}
+	return rr.Attempts[len(rr.Attempts)-1].Err()
+}
+
+// Retry retries to call function operation at least once.
+func (r Retryer) Retry(ctx context.Context, operation func(context.Context) error) RetryResult {
 	var err error
 	maxAttempts := r.MaxAttempts
-	attempt := 0
 	delayer := r.delayer()
-	for {
-		attempt++
 
-		err = op(ctx)
+	result := RetryResult{MaxAttempts: maxAttempts}
+	var attempt Attempt
+	appendAttempt := func() {
+		result.Attempts = append(result.Attempts, attempt)
+	}
+
+	for {
+		err = operation(ctx)
 		if err == nil {
-			return nil
+			appendAttempt()
+			break
 		}
 
 		var berr *BreakError
 		if errors.As(err, &berr) {
-			return berr.Err
+			attempt.OperationError = berr.Err
+			appendAttempt()
+			break
 		}
 
-		if maxAttempts > 0 && attempt >= maxAttempts {
-			return err
+		attempt.OperationError = err
+		appendAttempt()
+		if maxAttempts > 0 && len(result.Attempts) >= maxAttempts {
+			break
 		}
 
-		select {
-		case <-ctx.Done():
-			return err
-		default:
-		}
-		d := delayer.Delay(attempt)
-		deadline, ok := ctx.Deadline()
-		if ok {
-			if time.Until(deadline) < d {
-				return err
-			}
-		}
-		if cerr := sleep(ctx, d); cerr != nil {
-			return err
+		d := delayer.Delay(len(result.Attempts))
+		attempt = Attempt{Delay: d}
+		if err = sleep(ctx, d); err != nil {
+			attempt.ContextError = err
+			appendAttempt()
+			break
 		}
 	}
+
+	return result
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
